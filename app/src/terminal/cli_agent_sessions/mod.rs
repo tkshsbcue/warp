@@ -90,26 +90,30 @@ pub enum CLIAgentInputEntrypoint {
     SharedSessionSync,
 }
 
+fn non_empty_trimmed(s: Option<&str>) -> Option<String> {
+    s.map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned)
+}
+
 impl CLIAgentSessionContext {
     pub(crate) fn display_title(&self) -> Option<String> {
         self.latest_user_prompt().or_else(|| self.title_like_text())
     }
 
     pub(crate) fn latest_user_prompt(&self) -> Option<String> {
-        self.query
-            .as_deref()
-            .map(str::trim)
-            .filter(|query| !query.is_empty())
-            .map(str::to_owned)
+        non_empty_trimmed(self.query.as_deref())
     }
 
     /// Returns summary text suitable as a fallback title when no user prompt is available.
+    ///
+    /// Prefers `response` (set by `Stop`) over `summary` (set by `PermissionRequest`).
+    /// `summary` carries transient state — for example "Wants to run bash: …" — and
+    /// the `Stop` event does not clear it, so once the agent finishes the response is
+    /// the right thing to show. `summary` is only the right answer while the session
+    /// is still mid-flight (e.g. blocked on a permission request) where `response`
+    /// has not yet been set.
     pub(crate) fn title_like_text(&self) -> Option<String> {
-        self.summary
-            .as_deref()
-            .map(str::trim)
-            .filter(|summary| !summary.is_empty())
-            .map(str::to_owned)
+        non_empty_trimmed(self.response.as_deref())
+            .or_else(|| non_empty_trimmed(self.summary.as_deref()))
     }
 }
 

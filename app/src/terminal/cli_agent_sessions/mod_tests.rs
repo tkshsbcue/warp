@@ -66,6 +66,105 @@ fn cli_agent_session_context_title_helpers_ignore_empty_text() {
 }
 
 #[test]
+fn cli_agent_session_context_title_like_text_prefers_response_over_summary() {
+    // Once the agent has produced a final response (set on `Stop`), the title
+    // should reflect that response rather than the stale `summary` left over
+    // from an earlier `PermissionRequest`.
+    let context = CLIAgentSessionContext {
+        summary: Some("Wants to run bash: rm -rf /tmp".to_string()),
+        response: Some("All set, the directory is gone.".to_string()),
+        ..Default::default()
+    };
+
+    assert_eq!(
+        context.title_like_text(),
+        Some("All set, the directory is gone.".to_string())
+    );
+}
+
+#[test]
+fn cli_agent_session_context_title_like_text_trims_response() {
+    let context = CLIAgentSessionContext {
+        response: Some("  trailing whitespace  ".to_string()),
+        ..Default::default()
+    };
+
+    assert_eq!(
+        context.title_like_text(),
+        Some("trailing whitespace".to_string())
+    );
+}
+
+#[test]
+fn cli_agent_session_context_title_like_text_falls_back_when_response_blank() {
+    // An empty/whitespace-only response (e.g. an aborted Stop event) should
+    // fall through to summary so we still surface useful in-progress state.
+    let context = CLIAgentSessionContext {
+        summary: Some("Reviewing changes".to_string()),
+        response: Some("   ".to_string()),
+        ..Default::default()
+    };
+
+    assert_eq!(
+        context.title_like_text(),
+        Some("Reviewing changes".to_string())
+    );
+}
+
+#[test]
+fn permission_request_then_stop_uses_response_for_title() {
+    // Reproduces the bug from issue #9525: a `PermissionRequest` arrives
+    // (setting summary), then a `Stop` arrives (setting response but not
+    // clearing summary). The tab title must reflect the response.
+    let mut session = CLIAgentSession {
+        agent: CLIAgent::Claude,
+        status: CLIAgentSessionStatus::InProgress,
+        session_context: CLIAgentSessionContext::default(),
+        input_state: CLIAgentInputState::Closed,
+        should_auto_toggle_input: false,
+        listener: None,
+        remote_host: None,
+        plugin_version: None,
+        draft_text: None,
+        custom_command_prefix: None,
+    };
+
+    session.apply_event(&CLIAgentEvent {
+        v: 1,
+        agent: CLIAgent::Claude,
+        event: CLIAgentEventType::PermissionRequest,
+        session_id: Some("abc".to_string()),
+        cwd: None,
+        project: None,
+        payload: CLIAgentEventPayload {
+            summary: Some("Wants to run bash: rm -rf /tmp".to_string()),
+            ..Default::default()
+        },
+    });
+    session.apply_event(&CLIAgentEvent {
+        v: 1,
+        agent: CLIAgent::Claude,
+        event: CLIAgentEventType::Stop,
+        session_id: Some("abc".to_string()),
+        cwd: None,
+        project: None,
+        payload: CLIAgentEventPayload {
+            // Note: no `summary` — that's how the Claude Code plugin sends
+            // `Stop`. The previous PermissionRequest's summary stays in
+            // `session_context.summary`, but it should not win the title.
+            response: Some("Done — removed /tmp.".to_string()),
+            ..Default::default()
+        },
+    });
+
+    assert_eq!(session.status, CLIAgentSessionStatus::Success);
+    assert_eq!(
+        session.session_context.title_like_text(),
+        Some("Done — removed /tmp.".to_string())
+    );
+}
+
+#[test]
 fn parse_permission_request_notification() {
     let body = r#"{"v":1,"agent":"claude","event":"permission_request","session_id":"abc","cwd":"/tmp/proj","project":"proj","summary":"Wants to run Bash: rm -rf /tmp","tool_name":"Bash","tool_input":{"command":"rm -rf /tmp"}}"#;
     let notif = parse_event(Some("warp://cli-agent"), body).unwrap();
