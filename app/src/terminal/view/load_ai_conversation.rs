@@ -12,6 +12,7 @@ use crate::ai::blocklist::agent_view::{
 use crate::ai::blocklist::block::cli_controller::CLISubagentController;
 use crate::ai::blocklist::history_model::{CLIAgentConversation, CloudConversationData};
 use crate::ai::blocklist::BlocklistAIContextModel;
+use crate::context_chips::display_chip::format_change_directory_command;
 use crate::terminal::input::message_bar::Message as InputMessage;
 use crate::terminal::input::message_bar::MessageItem;
 use crate::terminal::model::block::SerializedBlock;
@@ -291,7 +292,7 @@ impl TerminalView {
             RestorationDirState::NeedsCd { path } => {
                 let path_for_hint = path.clone();
                 let did_execute_cd = self.input.update(ctx, |input, ctx| {
-                    input.try_execute_command(&format!("cd \"{path}\""), ctx)
+                    input.try_execute_command(&format_change_directory_command(&path), ctx)
                 });
                 if did_execute_cd {
                     self.on_next_block_completed(move |me, ctx| {

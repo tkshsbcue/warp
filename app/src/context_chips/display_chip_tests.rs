@@ -1,4 +1,7 @@
-use super::{format_git_branch_command, truncate_from_beginning, GitBranch, GitLineChanges};
+use super::{
+    format_change_directory_command, format_git_branch_command, truncate_from_beginning,
+    GitBranch, GitLineChanges,
+};
 use crate::context_chips::{
     git_branch_on_click::GitBranchOnClickValue, github_pr_display_text_from_url, ContextChipKind,
 };
@@ -335,6 +338,58 @@ fn test_truncate_from_beginning_windows_path() {
     let text = "C:\\Users\\用户\\Documents\\项目\\test.txt";
     let result = truncate_from_beginning(text, 20);
     assert_eq!(result, "…cuments\\项目\\test.txt");
+}
+
+#[test]
+fn test_format_change_directory_command_plain_path() {
+    assert_eq!(
+        format_change_directory_command("/Users/me/projects/repo"),
+        "cd '/Users/me/projects/repo'"
+    );
+}
+
+#[test]
+fn test_format_change_directory_command_path_with_spaces() {
+    assert_eq!(
+        format_change_directory_command("/Users/me/My Documents/repo"),
+        "cd '/Users/me/My Documents/repo'"
+    );
+}
+
+#[test]
+fn test_format_change_directory_command_neutralizes_dollar_expansion() {
+    assert_eq!(
+        format_change_directory_command("/Users/me/my$HOME/sub"),
+        "cd '/Users/me/my$HOME/sub'"
+    );
+}
+
+#[test]
+fn test_format_change_directory_command_neutralizes_command_substitution() {
+    assert_eq!(
+        format_change_directory_command("/tmp/innocent$(printf RCE)"),
+        "cd '/tmp/innocent$(printf RCE)'"
+    );
+    assert_eq!(
+        format_change_directory_command("/tmp/legit`echo PWNED`"),
+        "cd '/tmp/legit`echo PWNED`'"
+    );
+}
+
+#[test]
+fn test_format_change_directory_command_neutralizes_double_quote_and_backslash() {
+    assert_eq!(
+        format_change_directory_command("/tmp/has\"quote/and\\slash"),
+        "cd '/tmp/has\"quote/and\\slash'"
+    );
+}
+
+#[test]
+fn test_format_change_directory_command_escapes_embedded_single_quote() {
+    assert_eq!(
+        format_change_directory_command("/tmp/it's/fine"),
+        "cd '/tmp/it'\\''s/fine'"
+    );
 }
 
 #[test]
